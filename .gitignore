@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+
+# Data
+data/
+*.wav
+*.opus
+*.mp3
+*.flac
+uploads/
+
+# Models (downloaded at runtime)
+models/
+
+# OS
+.DS_Store
+Thumbs.db
