@@ -8,24 +8,25 @@ Human memory is lossy. We forget names seconds after hearing them. We lose the c
 
 Aura captures the audio stream of your waking life and transforms it into structured, searchable, actionable memory. It builds a comprehensive map of who you are: the people you know, how you speak, what you care about, the stories you tell, the promises you make.
 
-### Near-Term Goals (Memory Augmentation)
-- **Name recall**: Identify who you're talking to and surface their name + context
-- **Conversation continuity**: "Last time you spoke with Sarah, you discussed the kitchen renovation"
-- **Task memory**: "You told Mike you'd send him that article by Friday"
-- **Spatial memory**: "You came to the kitchen to grab your keys — you mentioned it 2 minutes ago in the hallway"
+### Near-Term Goals (Knowledge Generation)
+- **Speaker identification**: Know who you're talking to across every conversation, persistently
+- **Conversation indexing**: Full transcripts with speaker labels, searchable and browsable
 - **Daily summaries**: Structured recap of your day — who you saw, what was discussed, decisions made
+- **Fact extraction**: Automatically capture facts about people, places, events, preferences
 
 ### Mid-Term Goals (Life Mapping)
 - **Relationship graph**: Map of every person in your life, how you know them, how often you interact, sentiment trends
+- **Person profiles**: Rich dossiers on every acquaintance — what you know about them, accumulated over time
 - **Speech pattern analysis**: Track your own communication patterns, verbal tics, emotional states
 - **Knowledge extraction**: Facts, opinions, preferences, stories — indexed and searchable
-- **Proactive reminders**: Surface relevant context before/during interactions ("You're meeting John — he mentioned his daughter's soccer game last time")
+- **Commitment tracking**: Promises made, obligations noted, follow-ups surfaced
 
 ### Long-Term Goals (Essence Preservation)
 - **Personal voice model**: Capture enough of your speech patterns to reconstruct your communication style
+- **Personality portrait**: Your beliefs, humor, values, interests — distilled from years of conversation
 - **Memory archive**: Comprehensive, searchable archive of your life's conversations
 - **Legacy mode**: After death, allow loved ones to interact with a representation of who you were — your stories, your advice, your way of speaking
-- **Therapeutic applications**: Track cognitive decline, aid dementia patients, support grief processing
+- **Longitudinal analysis**: How you change over years — evolving interests, deepening relationships, shifting beliefs
 
 ## Design Principles
 

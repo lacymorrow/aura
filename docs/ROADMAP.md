@@ -89,39 +89,37 @@ Wear device all day → dock at night → processing runs automatically → resu
 
 ---
 
-## Phase 5: Real-Time Whisper Mode (Weeks 23-30)
-**Goal**: Live speaker identification and contextual whispers.
+## Phase 5: Deep Knowledge & Essence (Weeks 23-30)
+**Goal**: Rich personal modeling — speech patterns, personality, beliefs, stories.
 
 ### Deliverables
-- [ ] BLE audio streaming (device → phone)
-- [ ] On-device VAD (phone)
-- [ ] On-device speaker embedding (lightweight model)
-- [ ] Local voiceprint cache on phone (top 50 known speakers)
-- [ ] Speaker match → notification pipeline
-- [ ] Context card generation (name + last conversation + key facts)
-- [ ] Spatial memory ("you came here for X")
-- [ ] Whisper delivery (notification, watch, bone conduction)
-- [ ] Latency optimization (target: < 3 seconds from speech to notification)
+- [ ] Speech pattern modeling (vocabulary, cadence, favorite expressions, verbal tics)
+- [ ] Opinion/belief extraction and tracking over time
+- [ ] Story detection and archival (anecdotes the user tells repeatedly)
+- [ ] Personality profiling (communication style, humor, values — from speech data)
+- [ ] Relationship depth scoring (closeness, frequency, sentiment trends over time)
+- [ ] Life timeline generation (major events, transitions, milestones from conversations)
+- [ ] Contradiction detection ("you said X in January but Y in March")
+- [ ] Interest/passion mapping (what topics light the user up)
 
 ### Success Criteria
-Walk up to someone you've met before → within 3 seconds, get a silent notification with their name and context.
+After 3+ months of data, the system can produce a rich "portrait" of the user: how they speak, what they care about, who matters to them, and how those things change over time.
 
 ---
 
-## Phase 6: Essence & Legacy (Months 8-12+)
-**Goal**: Long-term memory archival and personality preservation.
+## Phase 6: Legacy & Preservation (Months 8-12+)
+**Goal**: Long-term archival for essence preservation and future interaction.
 
 ### Deliverables
-- [ ] Speech pattern modeling (vocabulary, cadence, expressions)
-- [ ] Opinion/belief extraction and tracking over time
-- [ ] Story detection and archival (anecdotes the user tells repeatedly)
-- [ ] Personal voice synthesis (optional, with explicit consent)
-- [ ] Legacy mode UI (for family members after user's passing)
-- [ ] Cognitive tracking (detect changes in speech patterns over time)
-- [ ] Therapeutic integrations (dementia care, grief support)
+- [ ] Personal voice model (capture enough patterns to reconstruct communication style)
+- [ ] "Ask me anything" interface (RAG over full conversation history — query the user's knowledge)
+- [ ] Legacy mode UI (for family/loved ones — browse the person's stories, beliefs, advice)
+- [ ] Cognitive tracking (detect changes in speech patterns, vocabulary over time)
+- [ ] Export formats (structured data, narrative summaries, interactive archives)
+- [ ] Longitudinal analysis (how relationships, interests, and personality evolve over years)
 
 ### Success Criteria
-TBD — this phase requires extensive ethical review and user research.
+A loved one can ask "What did [user] think about X?" or "Tell me a story [user] used to tell" and get an authentic, sourced answer.
 
 ---
 
@@ -134,5 +132,5 @@ TBD — this phase requires extensive ethical review and user research.
 | Knowledge graph populated | Week 10 | Structured facts from 1 week of audio |
 | App MVP | Week 16 | Daily briefing + search functional |
 | Hardware integrated | Week 22 | Automatic dock-to-briefing flow |
-| Whisper mode | Week 30 | < 3s name recall in real-time |
-| Essence features | Month 12 | Speech model + legacy mode prototype |
+| Deep knowledge model | Week 30 | Rich user portrait from 3 months of data |
+| Legacy/preservation | Month 12 | "Ask me anything" over full history |
