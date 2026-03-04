@@ -131,6 +131,17 @@ Index & Cache for Query
 | **Task Queue** | Redis + Celery | Job orchestration |
 | **Object Storage** | S3/MinIO | Raw audio archival |
 
+## Web Application
+
+The web frontend and API backend are built with **ShipKit** (Next.js 15 + Drizzle + Tailwind + Shadcn/UI). Lives in `~/repo/aura-web/`.
+
+- **Frontend**: Dashboard for browsing conversations, people, knowledge graph, search
+- **Backend**: Next.js API routes + server actions for querying processed data
+- **Auth**: NextAuth.js v5 (comes with ShipKit)
+- **Database**: PostgreSQL via Drizzle ORM (shared with pipeline data or separate read layer)
+
+The Python pipeline processes audio and writes to the DB. The Next.js app reads from it and serves the user-facing experience.
+
 ## Hardware Interface
 
 The processing server needs to handle:
