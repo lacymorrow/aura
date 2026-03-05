@@ -22,7 +22,8 @@ dependencies = [
     # Task queue
     "celery[redis]>=5.3",
     # ML / NLP
-    "torch>=2.2",
+    "torch>=2.2,<2.10",
+    "torchaudio>=2.2,<2.10",
     "transformers>=4.38",
     "sentence-transformers>=2.5",
     # Utilities
