@@ -80,10 +80,6 @@ class Speaker(Base):
     # Relationships
     conversation_speakers = relationship("ConversationSpeaker", back_populates="speaker")
 
-    __table_args__ = (
-        Index("ix_speakers_is_owner", "is_owner"),
-    )
-
 
 class Conversation(Base):
     """A processed conversation session."""

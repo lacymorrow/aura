@@ -39,7 +39,7 @@ def get_session() -> Session:
 def init_db():
     """Create all tables if they don't exist."""
     engine = get_engine()
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(engine, checkfirst=True)
     logger.info("Database tables initialized.")
 
 

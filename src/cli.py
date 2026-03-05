@@ -247,6 +247,26 @@ def db_init(verbose: bool):
     click.echo("✅ Database initialized.")
 
 
+@db.command(name="reset")
+@click.option("-v", "--verbose", is_flag=True)
+@click.option("--yes", is_flag=True, help="Skip confirmation")
+def db_reset(verbose: bool, yes: bool):
+    """Drop and recreate all database tables. WARNING: destroys all data."""
+    setup_logging(verbose)
+
+    if not yes:
+        click.confirm("This will destroy ALL data. Continue?", abort=True)
+
+    from src.db.engine import get_engine, init_db
+    from src.db.models import Base
+
+    engine = get_engine()
+    Base.metadata.drop_all(engine)
+    click.echo("Dropped all tables.")
+    Base.metadata.create_all(engine)
+    click.echo("✅ Database reset complete.")
+
+
 @db.command(name="status")
 @click.option("-v", "--verbose", is_flag=True)
 def db_status(verbose: bool):
