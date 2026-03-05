@@ -17,9 +17,11 @@ WORKDIR /app
 # Copy source first (needed for editable install)
 COPY . .
 
-# Install Python deps
+# Install Python deps + clear bytecode cache
 RUN python -m pip install --upgrade pip && \
-    python -m pip install -e "."
+    python -m pip install -e "." && \
+    find /app -name '*.pyc' -delete && \
+    find /app -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null; true
 
 # Create data dirs
 RUN mkdir -p data/uploads data/processed models
