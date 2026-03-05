@@ -514,5 +514,20 @@ def _print_result(result, output_dir):
                 click.echo(f"  • {f['subject']}: {f['fact']}")
 
 
+# ---------- Ingest server ----------
+
+
+@cli.command()
+@click.option("--host", default="0.0.0.0", help="Bind host")
+@click.option("--port", type=int, default=8080, help="Bind port")
+@click.option("-v", "--verbose", is_flag=True)
+def serve(host: str, port: int, verbose: bool):
+    """Start the ingest HTTP server (receives uploads from ESP32 devices)."""
+    setup_logging(verbose)
+    import uvicorn
+    click.echo(f"🌐 Starting Aura ingest server on {host}:{port}")
+    uvicorn.run("src.api.ingest:app", host=host, port=port, log_level="info")
+
+
 if __name__ == "__main__":
     cli()

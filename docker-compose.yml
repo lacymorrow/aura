@@ -65,6 +65,24 @@ services:
     entrypoint: ["python", "-m", "src.cli"]
     command: ["watch", "--interval", "60", "--log-file", "/app/logs/watcher.log"]
 
+  # --- Ingest API (receives uploads from ESP32 devices) ---
+  ingest:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    entrypoint: ["python", "-m", "src.cli"]
+    command: ["serve", "--port", "8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 volumes:
   model-cache:
   pgdata:
