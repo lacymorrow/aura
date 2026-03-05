@@ -26,6 +26,9 @@ dependencies = [
     "torchaudio>=2.2",
     "transformers>=4.38",
     "sentence-transformers>=2.5",
+    # LLM providers
+    "anthropic>=0.25",
+    "openai>=1.12",
     # Utilities
     "pydantic>=2.6",
     "pydantic-settings>=2.1",
