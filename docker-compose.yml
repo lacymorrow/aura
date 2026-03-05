@@ -18,6 +18,9 @@ services:
       retries: 5
 
   # --- One-shot pipeline (manual runs) ---
+  # Usage: docker compose run --rm aura process <audio_file>
+  # Does NOT require postgres — works standalone for file-based output.
+  # To enable DB persistence, start `db` first: docker compose up -d db
   aura:
     build: .
     deploy:
@@ -35,9 +38,6 @@ services:
       - .env
     environment:
       - AURA_DATABASE_URL=postgresql://aura:${AURA_DB_PASSWORD:-aura_secret}@db:5432/aura
-    depends_on:
-      db:
-        condition: service_healthy
 
   # --- File watcher (background service) ---
   watcher:

@@ -256,11 +256,12 @@ def db_status(verbose: bool):
 
     try:
         engine = get_engine()
+        from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
 
-        from sqlalchemy.orm import Session
-        with Session(engine) as session:
+        from sqlalchemy.orm import Session as DBSession
+        with DBSession(engine) as session:
             counts = {
                 "recordings": session.query(Recording).count(),
                 "speakers": session.query(Speaker).count(),
