@@ -14,13 +14,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python deps first (cached layer)
-COPY pyproject.toml .
+# Copy source first (needed for editable install)
+COPY . .
+
+# Install Python deps
 RUN python -m pip install --upgrade pip && \
     python -m pip install -e "."
-
-# Copy source
-COPY . .
 
 # Create data dirs
 RUN mkdir -p data/uploads data/processed models
