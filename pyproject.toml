@@ -7,7 +7,7 @@ dependencies = [
     # Audio processing
     "faster-whisper>=1.0.0",
     "pyannote.audio>=3.1",
-    "speechbrain>=1.0",
+    "speechbrain @ git+https://github.com/speechbrain/speechbrain.git@develop",
     "silero-vad>=5.0",
     "pydub>=0.25",
     "soundfile>=0.12",
@@ -22,8 +22,8 @@ dependencies = [
     # Task queue
     "celery[redis]>=5.3",
     # ML / NLP
-    "torch>=2.2,<2.9",
-    "torchaudio>=2.2,<2.9",
+    "torch>=2.2",
+    "torchaudio>=2.2",
     "transformers>=4.38",
     "sentence-transformers>=2.5",
     # Utilities
