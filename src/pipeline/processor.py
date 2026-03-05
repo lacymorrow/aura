@@ -54,10 +54,12 @@ class AudioProcessor:
     def __init__(
         self,
         enable_extraction: bool = True,
+        enable_db: bool = False,
         owner_speaker: str = "SPEAKER_00",
         retry_extraction: int = 2,
     ):
         self.enable_extraction = enable_extraction
+        self.enable_db = enable_db
         self.owner_speaker = owner_speaker
         self.retry_extraction = retry_extraction
 
@@ -273,6 +275,16 @@ class AudioProcessor:
         # Save results
         if output_dir:
             self._save_results(result, Path(output_dir))
+
+        # Persist to database
+        if self.enable_db:
+            try:
+                from src.db.persist import persist_result
+                persist_result(result)
+                logger.info("Results persisted to database.")
+            except Exception as e:
+                logger.error(f"DB persistence failed (non-fatal): {e}")
+                errors.append(f"db: {e}")
 
         return result
 

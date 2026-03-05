@@ -36,10 +36,11 @@ def cli():
 @click.argument("audio_path", type=click.Path(exists=True))
 @click.option("-o", "--output", type=click.Path(), default=None, help="Output directory")
 @click.option("--no-extract", is_flag=True, help="Skip knowledge extraction (LLM)")
+@click.option("--db", is_flag=True, help="Persist results to PostgreSQL")
 @click.option("--owner", default="SPEAKER_00", help="Owner speaker label")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
 @click.option("--log-file", type=click.Path(), default=None, help="Log to file")
-def process(audio_path: str, output: str | None, no_extract: bool, owner: str, verbose: bool, log_file: str | None):
+def process(audio_path: str, output: str | None, no_extract: bool, db: bool, owner: str, verbose: bool, log_file: str | None):
     """Process an audio file through the full pipeline.
 
     Runs: VAD → Transcription → Diarization → Speaker ID → Alignment → Extraction
@@ -52,6 +53,7 @@ def process(audio_path: str, output: str | None, no_extract: bool, owner: str, v
 
     processor = AudioProcessor(
         enable_extraction=not no_extract,
+        enable_db=db,
         owner_speaker=owner,
     )
 
