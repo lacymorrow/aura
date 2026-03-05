@@ -1,0 +1,21 @@
+services:
+  aura:
+    build: .
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - model-cache:/root/.cache
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+volumes:
+  model-cache:
