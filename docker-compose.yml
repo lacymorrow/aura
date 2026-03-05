@@ -1,4 +1,23 @@
 services:
+  # --- PostgreSQL + pgvector ---
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aura
+      POSTGRES_USER: aura
+      POSTGRES_PASSWORD: ${AURA_DB_PASSWORD:-aura_secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aura"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- One-shot pipeline (manual runs) ---
   aura:
     build: .
     deploy:
@@ -14,8 +33,38 @@ services:
       - model-cache:/root/.cache
     env_file:
       - .env
-    ports:
-      - "8000:8000"
+    environment:
+      - AURA_DATABASE_URL=postgresql://aura:${AURA_DB_PASSWORD:-aura_secret}@db:5432/aura
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # --- File watcher (background service) ---
+  watcher:
+    build: .
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - model-cache:/root/.cache
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - AURA_DATABASE_URL=postgresql://aura:${AURA_DB_PASSWORD:-aura_secret}@db:5432/aura
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "src.cli"]
+    command: ["watch", "--interval", "60", "--log-file", "/app/logs/watcher.log"]
 
 volumes:
   model-cache:
+  pgdata:

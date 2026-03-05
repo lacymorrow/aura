@@ -1,15 +1,31 @@
+# Env
+.env
+.env.local
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
 *.egg-info/
 dist/
 build/
 .eggs/
-*.egg
-.venv/
-venv/
-env/
+
+# Data (audio files are large)
+data/uploads/*.wav
+data/uploads/*.mp3
+data/uploads/*.flac
+data/uploads/*.m4a
+data/uploads/*.ogg
+data/uploads/*.opus
+data/processed/
+
+# Models
+models/
+
+# Logs
+logs/
+*.log
 
 # IDE
 .vscode/
@@ -17,21 +33,9 @@ env/
 *.swp
 *.swo
 
-# Environment
-.env
-.env.*
-
-# Data
-data/
-*.wav
-*.opus
-*.mp3
-*.flac
-uploads/
-
-# Models (downloaded at runtime)
-models/
-
 # OS
 .DS_Store
 Thumbs.db
+
+# Docker
+.docker/

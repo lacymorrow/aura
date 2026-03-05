@@ -7,12 +7,19 @@ from pathlib import Path
 import click
 
 
-def setup_logging(verbose: bool = False):
+def setup_logging(verbose: bool = False, log_file: str | None = None):
+    """Configure logging with optional file output."""
     level = logging.DEBUG if verbose else logging.INFO
+    handlers = [logging.StreamHandler(sys.stderr)]
+
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
+        handlers=handlers,
     )
 
 
@@ -22,18 +29,22 @@ def cli():
     pass
 
 
+# ---------- Pipeline commands ----------
+
+
 @cli.command()
 @click.argument("audio_path", type=click.Path(exists=True))
 @click.option("-o", "--output", type=click.Path(), default=None, help="Output directory")
 @click.option("--no-extract", is_flag=True, help="Skip knowledge extraction (LLM)")
 @click.option("--owner", default="SPEAKER_00", help="Owner speaker label")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
-def process(audio_path: str, output: str | None, no_extract: bool, owner: str, verbose: bool):
+@click.option("--log-file", type=click.Path(), default=None, help="Log to file")
+def process(audio_path: str, output: str | None, no_extract: bool, owner: str, verbose: bool, log_file: str | None):
     """Process an audio file through the full pipeline.
 
     Runs: VAD → Transcription → Diarization → Speaker ID → Alignment → Extraction
     """
-    setup_logging(verbose)
+    setup_logging(verbose, log_file)
 
     from src.pipeline.processor import AudioProcessor
 
@@ -45,45 +56,89 @@ def process(audio_path: str, output: str | None, no_extract: bool, owner: str, v
     )
 
     result = processor.process(audio_path, output_dir=output_dir)
+    _print_result(result, output_dir)
 
-    # Print summary
+
+@cli.command()
+@click.option("-d", "--upload-dir", type=click.Path(), default=None, help="Upload directory")
+@click.option("-o", "--output-dir", type=click.Path(), default=None, help="Output directory")
+@click.option("--no-extract", is_flag=True, help="Skip knowledge extraction")
+@click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
+@click.option("--log-file", type=click.Path(), default=None, help="Log to file")
+def batch(upload_dir: str | None, output_dir: str | None, no_extract: bool, verbose: bool, log_file: str | None):
+    """Process all unprocessed audio files in the upload directory."""
+    setup_logging(verbose, log_file)
+
+    from src.pipeline.watcher import process_batch
+
+    results = process_batch(
+        upload_dir=upload_dir,
+        processed_dir=output_dir,
+        enable_extraction=not no_extract,
+    )
+
     click.echo(f"\n{'=' * 50}")
-    click.echo(f"✅ Processing complete")
+    click.echo(f"Batch processing complete")
     click.echo(f"{'=' * 50}")
-    click.echo(f"  File: {audio_path}")
-    click.echo(f"  Duration: {result.duration:.1f}s ({result.duration / 60:.1f}min)")
-    click.echo(f"  Speech: {result.speech_ratio * 100:.0f}%")
-    click.echo(f"  Speakers: {result.num_speakers}")
-    click.echo(f"  Segments: {result.num_segments}")
-    click.echo(f"  Time: {result.processing_time}s")
-    click.echo(f"  Output: {output_dir}/")
-    if result.errors:
-        click.echo(f"  ⚠️ Errors: {result.errors}")
 
-    click.echo(f"\n--- Transcript ---\n")
-    click.echo(result.transcript_text)
+    done = sum(1 for r in results if r["status"] == "done")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    click.echo(f"  Processed: {done}")
+    click.echo(f"  Failed: {failed}")
 
-    if result.extraction:
-        click.echo(f"\n--- Knowledge ---")
-        ex = result.extraction
-        if ex.get("summary"):
-            click.echo(f"\nSummary: {ex['summary']}")
-        if ex.get("topics"):
-            click.echo(f"Topics: {', '.join(ex['topics'])}")
-        if ex.get("people_mentioned"):
-            click.echo(f"\nPeople:")
-            for p in ex["people_mentioned"]:
-                click.echo(f"  • {p['name']}")
-                for f in p.get("facts", []):
-                    click.echo(f"    - {f}")
-        if ex.get("commitments"):
-            click.echo(f"\nCommitments:")
-            for c in ex["commitments"]:
-                click.echo(f"  • {c['description']} (by {c['speaker']})")
-        if ex.get("facts"):
-            click.echo(f"\nFacts:")
-            for f in ex["facts"]:
-                click.echo(f"  • {f['subject']}: {f['fact']}")
+    if results:
+        total_duration = sum(r.get("duration", 0) for r in results if r["status"] == "done")
+        total_time = sum(r.get("processing_time", 0) for r in results if r["status"] == "done")
+        click.echo(f"  Total audio: {total_duration / 60:.1f} min")
+        click.echo(f"  Total processing time: {total_time:.1f}s")
+        if total_duration > 0:
+            click.echo(f"  Speed: {total_duration / total_time:.1f}x realtime")
+
+    for r in results:
+        status = "✅" if r["status"] == "done" else "❌"
+        click.echo(f"\n  {status} {r['file']}")
+        if r["status"] == "done":
+            click.echo(f"     {r['duration']:.0f}s, {r['speakers']} speakers, {r['processing_time']:.1f}s")
+            if r.get("errors"):
+                click.echo(f"     ⚠️ {r['errors']}")
+        else:
+            click.echo(f"     Error: {r.get('error', 'unknown')}")
+
+
+@cli.command()
+@click.option("-d", "--upload-dir", type=click.Path(), default=None, help="Upload directory")
+@click.option("-o", "--output-dir", type=click.Path(), default=None, help="Output directory")
+@click.option("--interval", type=int, default=60, help="Poll interval in seconds")
+@click.option("--no-extract", is_flag=True, help="Skip knowledge extraction")
+@click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
+@click.option("--log-file", type=click.Path(), default=None, help="Log to file")
+def watch(upload_dir: str | None, output_dir: str | None, interval: int, no_extract: bool, verbose: bool, log_file: str | None):
+    """Watch upload directory and process new files automatically.
+
+    Polls for new audio files and processes them as they appear.
+    Designed to run as a background service.
+    """
+    setup_logging(verbose, log_file)
+
+    from src.pipeline.watcher import watch as run_watcher
+
+    click.echo(f"👁  Watching for new audio files (poll every {interval}s)")
+    click.echo(f"   Upload dir: {upload_dir or 'data/uploads'}")
+    click.echo(f"   Output dir: {output_dir or 'data/processed'}")
+    click.echo(f"   Press Ctrl+C to stop\n")
+
+    try:
+        run_watcher(
+            upload_dir=upload_dir,
+            processed_dir=output_dir,
+            poll_interval=interval,
+            enable_extraction=not no_extract,
+        )
+    except KeyboardInterrupt:
+        click.echo("\nWatcher stopped.")
+
+
+# ---------- Individual stage commands ----------
 
 
 @cli.command()
@@ -162,13 +217,154 @@ def speakers(audio_path: str, verbose: bool):
             f"speech={emb.duration:.1f}s"
         )
 
-    # Show pairwise similarities
     if len(embeddings) > 1:
         click.echo(f"\nPairwise cosine similarities:")
         for i, a in enumerate(embeddings):
-            for b in embeddings[i + 1 :]:
+            for b in embeddings[i + 1:]:
                 sim = SpeakerEmbedder.cosine_similarity(a.embedding, b.embedding)
                 click.echo(f"  {a.speaker} ↔ {b.speaker}: {sim:.4f}")
+
+
+# ---------- Database commands ----------
+
+
+@cli.group()
+def db():
+    """Database management commands."""
+    pass
+
+
+@db.command(name="init")
+@click.option("-v", "--verbose", is_flag=True)
+def db_init(verbose: bool):
+    """Initialize database tables."""
+    setup_logging(verbose)
+
+    from src.db.engine import init_db
+    init_db()
+    click.echo("✅ Database initialized.")
+
+
+@db.command(name="status")
+@click.option("-v", "--verbose", is_flag=True)
+def db_status(verbose: bool):
+    """Check database connection and table status."""
+    setup_logging(verbose)
+
+    from src.db.engine import get_engine
+    from src.db.models import Recording, Speaker, Conversation, Person, KnowledgeEntry
+
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+
+        from sqlalchemy.orm import Session
+        with Session(engine) as session:
+            counts = {
+                "recordings": session.query(Recording).count(),
+                "speakers": session.query(Speaker).count(),
+                "conversations": session.query(Conversation).count(),
+                "people": session.query(Person).count(),
+                "knowledge_entries": session.query(KnowledgeEntry).count(),
+            }
+
+        click.echo("✅ Database connected")
+        for table, count in counts.items():
+            click.echo(f"  {table}: {count}")
+    except Exception as e:
+        click.echo(f"❌ Database error: {e}")
+        sys.exit(1)
+
+
+# ---------- Status command ----------
+
+
+@cli.command()
+def status():
+    """Show system status and configuration."""
+    from src.config import settings
+
+    click.echo("Aura Pipeline Status")
+    click.echo(f"{'=' * 40}")
+    click.echo(f"  Upload dir:    {settings.upload_dir}")
+    click.echo(f"  Processed dir: {settings.processed_dir}")
+    click.echo(f"  Whisper model: {settings.whisper_model}")
+    click.echo(f"  Diarization:   {settings.diarization_model}")
+    click.echo(f"  LLM provider:  {settings.llm_provider}")
+    click.echo(f"  LLM model:     {settings.llm_model}")
+    click.echo(f"  LLM key:       {'✅ set' if settings.llm_api_key else '❌ not set'}")
+    click.echo(f"  HF token:      {'✅ set' if settings.hf_token else '❌ not set'}")
+    click.echo(f"  Database URL:  {settings.database_url}")
+
+    # Check for unprocessed files
+    from src.pipeline.watcher import find_unprocessed
+    unprocessed = find_unprocessed()
+    click.echo(f"\n  Unprocessed files: {len(unprocessed)}")
+    for f in unprocessed[:5]:
+        click.echo(f"    • {f.name}")
+    if len(unprocessed) > 5:
+        click.echo(f"    ... and {len(unprocessed) - 5} more")
+
+    # GPU check
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_mem = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+            click.echo(f"\n  GPU: {gpu_name} ({gpu_mem:.0f}GB)")
+        else:
+            click.echo(f"\n  GPU: ❌ not available (CPU mode)")
+    except ImportError:
+        click.echo(f"\n  GPU: unknown (torch not loaded)")
+
+
+# ---------- Helpers ----------
+
+
+def _print_result(result, output_dir):
+    """Print a processing result summary."""
+    click.echo(f"\n{'=' * 50}")
+    click.echo(f"✅ Processing complete")
+    click.echo(f"{'=' * 50}")
+    click.echo(f"  File: {result.audio_path}")
+    click.echo(f"  Duration: {result.duration:.1f}s ({result.duration / 60:.1f}min)")
+    click.echo(f"  Speech: {result.speech_ratio * 100:.0f}%")
+    click.echo(f"  Speakers: {result.num_speakers}")
+    click.echo(f"  Segments: {result.num_segments}")
+    click.echo(f"  Time: {result.processing_time}s")
+    click.echo(f"  Stages: {result.stage_times}")
+    click.echo(f"  Output: {output_dir}/")
+    if result.warnings:
+        for w in result.warnings:
+            click.echo(f"  ⚠️ {w}")
+    if result.errors:
+        click.echo(f"  ❌ Errors: {result.errors}")
+
+    click.echo(f"\n--- Transcript ---\n")
+    click.echo(result.transcript_text)
+
+    if result.extraction:
+        click.echo(f"\n--- Knowledge ---")
+        ex = result.extraction
+        if ex.get("summary"):
+            click.echo(f"\nSummary: {ex['summary']}")
+        if ex.get("topics"):
+            click.echo(f"Topics: {', '.join(ex['topics'])}")
+        if ex.get("people_mentioned"):
+            click.echo(f"\nPeople:")
+            for p in ex["people_mentioned"]:
+                click.echo(f"  • {p['name']}")
+                for f in p.get("facts", []):
+                    click.echo(f"    - {f}")
+        if ex.get("commitments"):
+            click.echo(f"\nCommitments:")
+            for c in ex["commitments"]:
+                click.echo(f"  • {c['description']} (by {c['speaker']})")
+        if ex.get("facts"):
+            click.echo(f"\nFacts:")
+            for f in ex["facts"]:
+                click.echo(f"  • {f['subject']}: {f['fact']}")
 
 
 if __name__ == "__main__":
