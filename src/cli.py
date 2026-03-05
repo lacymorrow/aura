@@ -320,22 +320,24 @@ def _resolve_speaker_id(partial_id: str) -> str | None:
     """Resolve a partial speaker ID to a full UUID."""
     from src.db.engine import get_session
     from src.db.models import Speaker
-    from sqlalchemy import cast, String
 
     session = get_session()
     try:
-        # Try exact match first
-        speaker = session.query(Speaker).filter_by(id=partial_id).first()
-        if speaker:
-            return str(speaker.id)
+        # Try exact UUID match first (only if it looks like a full UUID)
+        if len(partial_id) >= 32:
+            speaker = session.query(Speaker).filter_by(id=partial_id).first()
+            if speaker:
+                return str(speaker.id)
 
-        # Try prefix match
+        # Prefix match against all speakers
         speakers = session.query(Speaker).all()
         matches = [s for s in speakers if str(s.id).startswith(partial_id)]
         if len(matches) == 1:
             return str(matches[0].id)
         elif len(matches) > 1:
             click.echo(f"⚠️  Ambiguous ID prefix '{partial_id}' — matches {len(matches)} speakers")
+            for m in matches:
+                click.echo(f"    {str(m.id)[:8]} — {m.name or m.label}")
             return None
         return None
     finally:
