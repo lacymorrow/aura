@@ -100,11 +100,18 @@ class Diarizer:
         audio_path = Path(audio_path)
         logger.info(f"Diarizing {audio_path.name}...")
 
-        diarization = self.pipeline(
+        raw_output = self.pipeline(
             str(audio_path),
             min_speakers=min_speakers,
             max_speakers=max_speakers,
         )
+
+        # pyannote.audio 4.x returns DiarizeOutput with .speaker_diarization
+        # pyannote.audio 3.x returns Annotation directly
+        if hasattr(raw_output, "speaker_diarization"):
+            diarization = raw_output.speaker_diarization
+        else:
+            diarization = raw_output
 
         turns = []
         for turn, _, speaker in diarization.itertracks(yield_label=True):
