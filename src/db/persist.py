@@ -73,14 +73,18 @@ def persist_result(result, speaker_matches: dict | None = None) -> str:
                 label = emb_data["speaker"]
                 match = speaker_matches.get(label)
                 if match:
-                    cs = ConversationSpeaker(
-                        conversation_id=conversation.id,
-                        speaker_id=match.speaker_id,
-                        diarization_label=label,
-                        speech_seconds=emb_data.get("duration", 0),
-                        is_owner=match.confidence == "high" and label == "SPEAKER_00",
-                    )
-                    session.add(cs)
+                    # Support both SpeakerMatch objects and dicts
+                    speaker_id = match.speaker_id if hasattr(match, "speaker_id") else match.get("speaker_id")
+                    confidence = match.confidence if hasattr(match, "confidence") else match.get("confidence")
+                    if speaker_id:
+                        cs = ConversationSpeaker(
+                            conversation_id=conversation.id,
+                            speaker_id=speaker_id,
+                            diarization_label=label,
+                            speech_seconds=emb_data.get("duration", 0),
+                            is_owner=confidence == "high" and label == "SPEAKER_00",
+                        )
+                        session.add(cs)
 
         # 4. Create knowledge entries + people
         if extraction:

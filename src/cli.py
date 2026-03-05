@@ -227,6 +227,121 @@ def speakers(audio_path: str, verbose: bool):
                 click.echo(f"  {a.speaker} ↔ {b.speaker}: {sim:.4f}")
 
 
+# ---------- Speaker commands ----------
+
+
+@cli.group(name="speaker")
+def speaker_group():
+    """Speaker registry management."""
+    pass
+
+
+@speaker_group.command(name="list")
+@click.option("-v", "--verbose", is_flag=True)
+def speaker_list(verbose: bool):
+    """List all known speakers in the registry."""
+    setup_logging(verbose)
+
+    from src.speakers.registry import SpeakerRegistry
+    registry = SpeakerRegistry()
+    speakers = registry.get_all_speakers()
+
+    if not speakers:
+        click.echo("No speakers registered yet.")
+        return
+
+    click.echo(f"\n{len(speakers)} known speakers:")
+    click.echo(f"{'=' * 60}")
+    for s in speakers:
+        name = s["name"] or "(unnamed)"
+        owner = " 👑" if s["is_owner"] else ""
+        speech = s["total_speech_seconds"]
+        samples = s["embedding_count"]
+        click.echo(
+            f"  {s['label']}: {name}{owner}"
+            f"  |  {speech:.0f}s speech, {samples} samples"
+            f"  |  id={s['id'][:8]}"
+        )
+        if s["first_seen"]:
+            click.echo(f"           first: {s['first_seen'][:19]}  last: {s['last_seen'][:19]}")
+
+
+@speaker_group.command(name="name")
+@click.argument("speaker_id")
+@click.argument("name")
+@click.option("-v", "--verbose", is_flag=True)
+def speaker_name(speaker_id: str, name: str, verbose: bool):
+    """Assign a name to a speaker.
+
+    SPEAKER_ID can be a full UUID or a prefix (first 8+ chars).
+    """
+    setup_logging(verbose)
+
+    from src.speakers.registry import SpeakerRegistry
+    registry = SpeakerRegistry()
+
+    # Support partial IDs
+    speaker_id = _resolve_speaker_id(speaker_id)
+    if not speaker_id:
+        click.echo("❌ Speaker not found.")
+        return
+
+    if registry.name_speaker(speaker_id, name):
+        click.echo(f"✅ Named speaker → {name}")
+    else:
+        click.echo(f"❌ Speaker {speaker_id} not found.")
+
+
+@speaker_group.command(name="set-owner")
+@click.argument("speaker_id")
+@click.option("-v", "--verbose", is_flag=True)
+def speaker_set_owner(speaker_id: str, verbose: bool):
+    """Mark a speaker as the device owner.
+
+    SPEAKER_ID can be a full UUID or a prefix (first 8+ chars).
+    """
+    setup_logging(verbose)
+
+    from src.speakers.registry import SpeakerRegistry
+    registry = SpeakerRegistry()
+
+    speaker_id = _resolve_speaker_id(speaker_id)
+    if not speaker_id:
+        click.echo("❌ Speaker not found.")
+        return
+
+    if registry.set_owner(speaker_id):
+        click.echo(f"✅ Set as device owner.")
+    else:
+        click.echo(f"❌ Speaker {speaker_id} not found.")
+
+
+def _resolve_speaker_id(partial_id: str) -> str | None:
+    """Resolve a partial speaker ID to a full UUID."""
+    from src.db.engine import get_session
+    from src.db.models import Speaker
+    from sqlalchemy import cast, String
+
+    session = get_session()
+    try:
+        # Try exact match first
+        speaker = session.query(Speaker).filter_by(id=partial_id).first()
+        if speaker:
+            return str(speaker.id)
+
+        # Try prefix match
+        speakers = session.query(Speaker).all()
+        matches = [s for s in speakers if str(s.id).startswith(partial_id)]
+        if len(matches) == 1:
+            return str(matches[0].id)
+        elif len(matches) > 1:
+            click.echo(f"⚠️  Ambiguous ID prefix '{partial_id}' — matches {len(matches)} speakers")
+            return None
+        return None
+    finally:
+        session.close()
+
+
 # ---------- Database commands ----------
 
 
@@ -363,6 +478,13 @@ def _print_result(result, output_dir):
             click.echo(f"  ⚠️ {w}")
     if result.errors:
         click.echo(f"  ❌ Errors: {result.errors}")
+
+    if result.speaker_matches:
+        click.echo(f"\n--- Speaker Identification ---")
+        for label, match in result.speaker_matches.items():
+            name = match.get("name") or f"speaker_{match['speaker_id'][:8]}"
+            new = " (NEW)" if match.get("is_new") else ""
+            click.echo(f"  {label} → {name}  (confidence={match['confidence']}, sim={match['similarity']:.4f}){new}")
 
     click.echo(f"\n--- Transcript ---\n")
     click.echo(result.transcript_text)

@@ -34,6 +34,7 @@ class ProcessingResult:
     labeled_transcript: dict
     speaker_embeddings: list[dict]
     extraction: dict | None = None
+    speaker_matches: dict = field(default_factory=dict)  # label -> {speaker_id, name, confidence, similarity}
     processing_time: float = 0.0
     stage_times: dict = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
@@ -170,6 +171,7 @@ class AudioProcessor:
 
         # --- Stage 4: Speaker Embeddings ---
         embeddings = []
+        speaker_matches = {}  # diarization_label -> SpeakerMatch
         if diarization:
             logger.info("\n--- Stage 4: Speaker Embedding ---")
             t0 = time.time()
@@ -177,6 +179,23 @@ class AudioProcessor:
                 embeddings = self.embedder.extract_per_speaker(
                     audio_path, diarization.turns
                 )
+
+                # Match against known speakers in DB
+                if self.enable_db and embeddings:
+                    try:
+                        from src.speakers.registry import SpeakerRegistry
+                        registry = SpeakerRegistry()
+                        for emb in embeddings:
+                            match = registry.identify(emb, recording_duration=emb.duration)
+                            speaker_matches[emb.speaker] = match
+                            logger.info(
+                                f"  {emb.speaker} → {match.name or f'speaker_{match.speaker_id[:8]}'} "
+                                f"(confidence={match.confidence}, sim={match.similarity:.4f}, new={match.is_new})"
+                            )
+                    except Exception as e:
+                        logger.error(f"Speaker matching failed (non-fatal): {e}")
+                        errors.append(f"speaker_matching: {e}")
+
             except Exception as e:
                 logger.error(f"Embedding extraction failed: {e}")
                 errors.append(f"embeddings: {e}")
@@ -252,6 +271,16 @@ class AudioProcessor:
                 for e in embeddings
             ],
             extraction=extraction_result.raw_json if extraction_result else None,
+            speaker_matches={
+                label: {
+                    "speaker_id": match.speaker_id,
+                    "name": match.name,
+                    "confidence": match.confidence,
+                    "similarity": round(match.similarity, 4),
+                    "is_new": match.is_new,
+                }
+                for label, match in speaker_matches.items()
+            },
             processing_time=round(time.time() - start_time, 1),
             stage_times=stage_times,
             errors=errors,
@@ -280,7 +309,7 @@ class AudioProcessor:
         if self.enable_db:
             try:
                 from src.db.persist import persist_result
-                persist_result(result)
+                persist_result(result, speaker_matches=speaker_matches or None)
                 logger.info("Results persisted to database.")
             except Exception as e:
                 logger.error(f"DB persistence failed (non-fatal): {e}")
