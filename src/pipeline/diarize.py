@@ -62,12 +62,13 @@ class Diarizer:
 
             logger.info(f"Loading diarization pipeline: {self.model_name}")
 
+            kwargs = {}
             if self.hf_token:
-                self._pipeline = Pipeline.from_pretrained(
-                    self.model_name, use_auth_token=self.hf_token
-                )
-            else:
-                self._pipeline = Pipeline.from_pretrained(self.model_name)
+                kwargs["token"] = self.hf_token
+
+            self._pipeline = Pipeline.from_pretrained(
+                self.model_name, **kwargs
+            )
 
             # Move to GPU if available
             import torch
