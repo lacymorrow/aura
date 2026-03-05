@@ -48,17 +48,29 @@ class VoiceActivityDetector:
         self.sample_rate = sample_rate
         self._model = None
 
-    @property
-    def model(self):
+    def _ensure_loaded(self):
+        """Lazy-load Silero VAD model and utilities."""
         if self._model is None:
             logger.info("Loading Silero VAD model...")
-            self._model, self._utils = torch.hub.load(
-                repo_or_dir="snakers4/silero-vad",
-                model="silero_vad",
-                force_reload=False,
-                trust_repo=True,
-            )
+            try:
+                # silero-vad >= 5.x package API
+                from silero_vad import load_silero_vad, get_speech_timestamps as _gst
+                self._model = load_silero_vad()
+                self._get_speech_timestamps = _gst
+            except ImportError:
+                # Fallback: torch.hub API
+                self._model, utils = torch.hub.load(
+                    repo_or_dir="snakers4/silero-vad",
+                    model="silero_vad",
+                    force_reload=False,
+                    trust_repo=True,
+                )
+                self._get_speech_timestamps = utils[0]
             logger.info("Silero VAD model loaded.")
+
+    @property
+    def model(self):
+        self._ensure_loaded()
         return self._model
 
     def detect(self, audio_path: str | Path) -> list[SpeechSegment]:
@@ -70,6 +82,7 @@ class VoiceActivityDetector:
         Returns:
             List of SpeechSegment with start/end times and confidence.
         """
+        self._ensure_loaded()
         audio_path = Path(audio_path)
         logger.info(f"Running VAD on {audio_path.name}")
 
@@ -78,7 +91,6 @@ class VoiceActivityDetector:
         if len(audio.shape) > 1:
             audio = audio.mean(axis=1)  # mono
         if sr != self.sample_rate:
-            # Resample using linear interpolation (simple but adequate for VAD)
             import torchaudio
 
             audio_tensor = torch.from_numpy(audio).unsqueeze(0)
@@ -87,12 +99,11 @@ class VoiceActivityDetector:
             audio = audio_tensor.squeeze(0).numpy()
 
         # Run Silero VAD
-        get_speech_timestamps = self._utils[0]
         audio_tensor = torch.from_numpy(audio)
 
-        speech_timestamps = get_speech_timestamps(
+        speech_timestamps = self._get_speech_timestamps(
             audio_tensor,
-            self.model,
+            self._model,
             threshold=self.threshold,
             min_speech_duration_ms=self.min_speech_duration_ms,
             max_speech_duration_s=self.max_speech_duration_s,
