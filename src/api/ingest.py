@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
@@ -28,6 +29,15 @@ app = FastAPI(
     title="Aura Ingest API",
     description="Receives audio uploads from Aura wearable devices",
     version="0.1.0",
+)
+
+# CORS — allow web dashboard to upload directly
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Directories
