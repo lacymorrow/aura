@@ -39,23 +39,8 @@ A necklace wearable (ESP32-C6) that records audio all day, syncs via WiFi to a l
 - [x] **CORS middleware** on ingest API
 - [x] **Device upload protocol** documented (`docs/DEVICE-UPLOAD-PROTOCOL.md`)
 
-## What's Broken: Docker on Otto
-**This is the #1 blocker.** Docker Desktop on Otto (Windows + WSL2) is deeply unstable:
-- Engine starts, works for ~30 seconds, then hangs
-- `docker ps` intermittently works, then times out
-- Creating new containers returns 502 Bad Gateway
-- Named pipe `//./pipe/dockerDesktopLinuxEngine` disappears
-- Multiple restart cycles, full reboot, kill/relaunch all tried — same result
-- **The DB container (`aura-db-1`) was briefly healthy but the engine kills it**
-
-### Options (pick one):
-1. **Reinstall Docker Desktop** — Uninstall from Settings → Apps, download fresh from docker.com, reinstall. DB data in WSL volumes should survive.
-2. **Go bare-metal** — Install Postgres + Python natively on Otto, skip Docker entirely. More reliable on Windows, but means managing deps on the host.
-3. **Switch to WSL-native Docker** — Install `docker.io` inside WSL Ubuntu instead of Docker Desktop. More stable than Docker Desktop but needs WSL Ubuntu distro setup.
-
 ## What Needs Doing Next (Priority Order)
-1. **Fix Docker or go bare-metal on Otto** — nothing works without a running DB + ingest server
-2. **Production hardening** — error handling, retry logic, health checks, graceful degradation in the pipeline
+1. **Production hardening** — error handling, retry logic, health checks, graceful degradation in the pipeline
 3. **Test end-to-end browser flow** — demo page upload → ingest → watcher → pipeline → dashboard
 4. **Wire dashboard pages** to real data (queries exist, pages need to call them)
 5. **Morning briefing** — daily summary cron job
