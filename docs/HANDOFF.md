@@ -111,8 +111,8 @@ AURA_INGEST_URL=http://100.111.32.113:8080
 - **Chunked uploads** — 32-64KB chunks for ESP32's 320KB SRAM
 - **Claude for extraction** — Anthropic API, not local LLM
 - **speechbrain from git develop** — pinned to fix torchaudio 2.9+ compat
-- **Docker-only on Otto** — but this decision is being tested by Docker instability
-- **No emdashes (—)** in vibe.rehab content (unrelated project, but noted)
+- **Docker on Otto** — disk space was the instability root cause, now resolved
+- **SD rotation policy** — upload → server ACK → delete. Never overwrite. If SD is full, stop recording and alert user. If no WiFi sync for extended period, alert user.
 
 ## Test Data
 - `data/uploads/test_conversation.wav` — 30s two-speaker conversation (Diane from NJ, Sheila from TX)
