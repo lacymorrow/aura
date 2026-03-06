@@ -3,19 +3,34 @@
 Runs the full processing chain on an audio file:
 VAD → Transcription → Diarization → Speaker Embedding → Alignment → Knowledge Extraction
 
-Production-grade: retries, graceful degradation, structured output.
+Production-grade: retries, graceful degradation, stage timeouts, GPU memory management.
 """
 
+import gc
 import hashlib
 import json
 import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Stage timeouts (seconds) — prevents pipeline from hanging on bad audio
+STAGE_TIMEOUTS = {
+    "vad": 120,
+    "transcribe": 600,     # large files can take a while
+    "diarize": 600,
+    "embed": 120,
+    "extract": 60,
+}
+
+# Maximum audio duration we'll process (seconds)
+MAX_AUDIO_DURATION = 7200  # 2 hours
+MIN_AUDIO_DURATION = 1.0   # 1 second
 
 
 @dataclass
@@ -47,6 +62,29 @@ def _file_hash(path: Path) -> str:
     with open(path, "rb") as f:
         h.update(f.read(1024 * 1024))
     return h.hexdigest()
+
+
+def _run_with_timeout(fn, timeout_seconds: int, stage_name: str):
+    """Run a function with a timeout. Raises TimeoutError if exceeded."""
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except FutureTimeout:
+            raise TimeoutError(
+                f"Stage '{stage_name}' timed out after {timeout_seconds}s"
+            )
+
+
+def _gpu_cleanup():
+    """Release GPU memory between stages."""
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
 
 
 class AudioProcessor:
@@ -129,45 +167,85 @@ class AudioProcessor:
         warnings = []
         stage_times = {}
 
+        # --- Validate input ---
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+        if audio_path.stat().st_size == 0:
+            raise ValueError(f"Audio file is empty: {audio_path}")
+        if audio_path.stat().st_size < 100:
+            raise ValueError(f"Audio file too small ({audio_path.stat().st_size} bytes): {audio_path}")
+
         fhash = _file_hash(audio_path)
 
         logger.info(f"{'=' * 60}")
         logger.info(f"Processing: {audio_path.name}")
         logger.info(f"  Hash: {fhash[:12]}...")
+        logger.info(f"  Size: {audio_path.stat().st_size / 1024:.1f} KB")
         logger.info(f"{'=' * 60}")
 
         # --- Stage 1: VAD ---
         logger.info("\n--- Stage 1: Voice Activity Detection ---")
         t0 = time.time()
         try:
-            speech_segments = self.vad.detect(audio_path)
+            speech_segments = _run_with_timeout(
+                lambda: self.vad.detect(audio_path),
+                STAGE_TIMEOUTS["vad"], "vad"
+            )
+        except TimeoutError as e:
+            logger.error(f"VAD timed out: {e}")
+            errors.append(f"vad: {e}")
+            speech_segments = []
         except Exception as e:
             logger.error(f"VAD failed: {e}")
             errors.append(f"vad: {e}")
             speech_segments = []
         stage_times["vad"] = round(time.time() - t0, 2)
+        _gpu_cleanup()
 
         # --- Stage 2: Transcription ---
         logger.info("\n--- Stage 2: Transcription ---")
         t0 = time.time()
         try:
-            transcript = self.transcriber.transcribe(audio_path)
+            transcript = _run_with_timeout(
+                lambda: self.transcriber.transcribe(audio_path),
+                STAGE_TIMEOUTS["transcribe"], "transcribe"
+            )
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             raise  # Can't continue without a transcript
         stage_times["transcribe"] = round(time.time() - t0, 2)
+
+        # Validate audio duration
+        if transcript.duration > MAX_AUDIO_DURATION:
+            raise ValueError(
+                f"Audio too long ({transcript.duration:.0f}s > {MAX_AUDIO_DURATION}s max)"
+            )
+        if transcript.duration < MIN_AUDIO_DURATION:
+            raise ValueError(
+                f"Audio too short ({transcript.duration:.1f}s < {MIN_AUDIO_DURATION}s min)"
+            )
+
+        _gpu_cleanup()
 
         # --- Stage 3: Diarization ---
         logger.info("\n--- Stage 3: Speaker Diarization ---")
         t0 = time.time()
         diarization = None
         try:
-            diarization = self.diarizer.diarize(audio_path)
+            diarization = _run_with_timeout(
+                lambda: self.diarizer.diarize(audio_path),
+                STAGE_TIMEOUTS["diarize"], "diarize"
+            )
+        except TimeoutError as e:
+            logger.error(f"Diarization timed out (degrading gracefully): {e}")
+            errors.append(f"diarization: {e}")
+            warnings.append("Diarization timed out -- transcript will lack speaker labels")
         except Exception as e:
             logger.error(f"Diarization failed (degrading gracefully): {e}")
             errors.append(f"diarization: {e}")
-            warnings.append("Diarization failed — transcript will lack speaker labels")
+            warnings.append("Diarization failed -- transcript will lack speaker labels")
         stage_times["diarize"] = round(time.time() - t0, 2)
+        _gpu_cleanup()
 
         # --- Stage 4: Speaker Embeddings ---
         embeddings = []
@@ -176,8 +254,11 @@ class AudioProcessor:
             logger.info("\n--- Stage 4: Speaker Embedding ---")
             t0 = time.time()
             try:
-                embeddings = self.embedder.extract_per_speaker(
-                    audio_path, diarization.turns
+                embeddings = _run_with_timeout(
+                    lambda: self.embedder.extract_per_speaker(
+                        audio_path, diarization.turns
+                    ),
+                    STAGE_TIMEOUTS["embed"], "embed"
                 )
 
                 # Match against known speakers in DB
@@ -200,6 +281,7 @@ class AudioProcessor:
                 logger.error(f"Embedding extraction failed: {e}")
                 errors.append(f"embeddings: {e}")
             stage_times["embed"] = round(time.time() - t0, 2)
+            _gpu_cleanup()
 
         # --- Stage 5: Alignment ---
         logger.info("\n--- Stage 5: Transcript-Diarization Alignment ---")
@@ -233,8 +315,11 @@ class AudioProcessor:
             last_error = None
             for attempt in range(1, self.retry_extraction + 1):
                 try:
-                    extraction_result = self.extractor.extract(
-                        labeled_transcript, owner_speaker=self.owner_speaker
+                    extraction_result = _run_with_timeout(
+                        lambda: self.extractor.extract(
+                            labeled_transcript, owner_speaker=self.owner_speaker
+                        ),
+                        STAGE_TIMEOUTS["extract"], "extract"
                     )
                     break
                 except Exception as e:
