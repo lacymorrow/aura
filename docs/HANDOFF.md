@@ -39,6 +39,50 @@ A necklace wearable (ESP32-C6) that records audio all day, syncs via WiFi to a l
 - [x] **CORS middleware** on ingest API
 - [x] **Device upload protocol** documented (`docs/DEVICE-UPLOAD-PROTOCOL.md`)
 
+## Hardware (ESP32 Wearable)
+
+### Overview
+Compact ESP32-based necklace that records audio 24/7, stores locally, and uploads when charging.
+
+### Components
+| Component | Details |
+|-----------|---------|
+| **MCU** | ESP32-C6 (WiFi + BLE, low power) |
+| **Microphone** | I2S MEMS mic (continuous capture) |
+| **Storage** | MicroSD card via SPI bus |
+| **Power** | Rechargeable battery + USB/dock charging circuit |
+| **Charging detection** | Voltage sensing so ESP32 knows when docked |
+
+### Audio Spec
+- **16kHz mono, 16-bit PCM** (sweet spot for Whisper transcription)
+- ~110MB/hour, ~2.6GB/day uncompressed
+- 32GB microSD = ~12 days buffer
+
+### Recording Behavior
+- Records continuously while on battery
+- Audio quality is intentionally low bitrate -- AI pipeline handles enhancement
+- Files written to microSD in chunks
+
+### Upload Behavior (on charge)
+- Detects external power → connects to WiFi
+- Uploads via chunked HTTP POST to ingest API (`docs/DEVICE-UPLOAD-PROTOCOL.md`)
+  - `POST /upload/chunked/init` → `POST /upload/chunked/{upload_id}` → `POST /upload/chunked/{upload_id}/complete`
+  - 32-64KB chunks (ESP32 has 320KB SRAM)
+- **Delete only after server 200 ACK** on `/complete`
+
+### SD Card Rotation Policy
+- **Upload → server ACK → delete.** No other rotation.
+- **Never overwrite.** If SD is full, stop recording and alert the user.
+- **Stale sync alert.** If no WiFi upload for an extended period, alert the user.
+
+### Hardware TODO
+1. I2S MEMS microphone selection and wiring
+2. MicroSD module integration (SPI bus)
+3. Battery + charging circuit (USB or dock)
+4. Charging detection (hardware signal / voltage sensing)
+5. Compact board layout for daily wearable use
+6. WAV header generation (or server-side raw PCM parsing)
+
 ## What Needs Doing Next (Priority Order)
 1. **Production hardening** — error handling, retry logic, health checks, graceful degradation in the pipeline
 3. **Test end-to-end browser flow** — demo page upload → ingest → watcher → pipeline → dashboard
