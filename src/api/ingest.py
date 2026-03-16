@@ -5,7 +5,14 @@ Endpoints:
     POST /ingest/chunk    — Upload a chunk for resumable uploads
     POST /ingest/complete — Signal that all chunks for a session are uploaded
     GET  /ingest/status   — Server health check + queue depth
+    GET  /ingest/health   — Deep health check (DB connectivity)
     GET  /ingest/device/:id — Check what files a device has already uploaded
+
+Production hardening:
+- File size limits (max 500MB per upload)
+- DB connectivity health check
+- Request logging with timing
+- Structured error responses
 """
 
 import hashlib
@@ -17,13 +24,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500MB
+MAX_CHUNK_SIZE = 256 * 1024          # 256KB per chunk
 
 app = FastAPI(
     title="Aura Ingest API",
@@ -48,6 +58,21 @@ MANIFEST_DIR = settings.data_dir / "manifests"
 for d in [INCOMING_DIR, CHUNKS_DIR, MANIFEST_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
+_start_time = time.time()
+
+
+# ---------- Middleware ----------
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all requests with timing."""
+    t0 = time.time()
+    response = await call_next(request)
+    dt = round((time.time() - t0) * 1000, 1)
+    logger.info(f"{request.method} {request.url.path} -> {response.status_code} ({dt}ms)")
+    return response
+
 
 # ---------- Health ----------
 
@@ -56,6 +81,49 @@ for d in [INCOMING_DIR, CHUNKS_DIR, MANIFEST_DIR]:
 async def root():
     """Health check."""
     return {"status": "ok", "service": "aura-ingest", "version": "0.1.0"}
+
+
+@app.get("/ingest/health")
+async def health_deep():
+    """Deep health check: verify DB connectivity and disk space."""
+    checks = {
+        "api": "ok",
+        "disk": "unknown",
+        "database": "unknown",
+    }
+
+    # Disk check
+    try:
+        disk = shutil.disk_usage(str(settings.data_dir))
+        free_gb = disk.free / (1024**3)
+        checks["disk"] = "ok" if free_gb > 1.0 else "warning"
+        checks["disk_free_gb"] = round(free_gb, 1)
+        if free_gb < 0.5:
+            checks["disk"] = "critical"
+    except Exception as e:
+        checks["disk"] = f"error: {e}"
+
+    # DB check
+    try:
+        from src.db.engine import get_session
+        session = get_session()
+        session.execute("SELECT 1")
+        session.close()
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+
+    overall = "ok"
+    if any(v.startswith("error") if isinstance(v, str) else False for v in checks.values()):
+        overall = "degraded"
+    if checks.get("disk") == "critical":
+        overall = "critical"
+
+    checks["status"] = overall
+    checks["uptime_seconds"] = round(time.time() - _start_time)
+
+    status_code = 200 if overall == "ok" else 503
+    return JSONResponse(content=checks, status_code=status_code)
 
 
 @app.get("/ingest/status")
@@ -72,6 +140,8 @@ async def ingest_status():
         "chunks_in_progress": chunks_in_progress,
         "disk_free_gb": round(disk.free / (1024**3), 1),
         "disk_total_gb": round(disk.total / (1024**3), 1),
+        "disk_used_pct": round((1 - disk.free / disk.total) * 100, 1),
+        "uptime_seconds": round(time.time() - _start_time),
         "accepted_formats": ["wav", "opus", "raw", "pcm", "adpcm"],
     }
 
@@ -114,10 +184,15 @@ async def ingest_upload(
     ts_safe = ts.replace(":", "-").replace("T", "_")[:19]
     ext = format if format in ("wav", "opus") else "raw"
 
-    # Read file content
+    # Read file content with size limit
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content)} bytes, max {MAX_UPLOAD_SIZE})"
+        )
 
     # Hash for dedup
     file_hash = hashlib.sha256(content).hexdigest()[:16]
@@ -204,6 +279,11 @@ async def ingest_chunk(
     session_dir.mkdir(parents=True, exist_ok=True)
 
     content = await file.read()
+    if len(content) > MAX_CHUNK_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Chunk too large ({len(content)} bytes, max {MAX_CHUNK_SIZE})"
+        )
     chunk_path = session_dir / f"chunk_{chunk_index:06d}.bin"
     chunk_path.write_bytes(content)
 
